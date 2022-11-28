@@ -92,6 +92,7 @@ DsReader::DsReader(std::string const& filepath)
 	std::vector<char> types;
 	types.reserve(10);
 	unsigned type_offset = 0u;
+	bool comment = false;
 
 	for (char prev = '\0', temp; ifs.get(temp); prev = temp)
 	{
@@ -103,6 +104,15 @@ DsReader::DsReader(std::string const& filepath)
 				raw_datas.back().value += temp;
 			if (temp == '"' && prev != '\\')
 				readmode = DsReadNone;
+			continue;
+		}
+		// Comments mode
+		if (comment)
+		{
+			temp = prev;
+			if (temp != '\n') continue;
+			++line;
+			comment = false;
 			continue;
 		}
 		// Check characters
@@ -145,6 +155,7 @@ DsReader::DsReader(std::string const& filepath)
 
 		case '[':
 			Validate(readmode == DsReadNone, "Unexpected '[' found");
+			label_s = "";
 			readmode = DsReadLabel;
 			break;
 
@@ -153,6 +164,10 @@ DsReader::DsReader(std::string const& filepath)
 			Validate(!labels.count(label_s), "Label redefinition");
 			labels[label_s] = (unsigned) raw_datas.size();
 			readmode = DsReadNone;
+			break;
+
+		case '#':
+			comment = true;
 			break;
 
 		case '\n':
@@ -232,6 +247,7 @@ DsReader::DsReader(std::string const& filepath)
 				{
 					if (!raw_datas.empty())
 						Validate(ValueValidate(raw_datas.back().type, raw_datas.back().value), "Invalid value found");
+					Validate(!types.empty(), "value cannot be determined while type being empty");
 					raw_datas.emplace_back(types[type_offset++], "").value.reserve(10);
 					if (type_offset == types.size()) type_offset = 0u;
 				}
@@ -291,7 +307,7 @@ unsigned DsReader::Label(std::string const& name) const
 DsReader& DsReader::operator>>(ty& var) {\
 	if (state & DsBad || state & DsEof) return *this;\
 	if (raw_datas[read_pointer].type != ety) { state |= DsBadtype; return *this; }\
-	method(raw_datas[read_pointer++].value, &var);\
+	method(raw_datas[read_pointer].value, &var); ++read_pointer;\
 	if (read_pointer >= raw_datas.size()) state |= DsEof;\
 	return *this;\
 }
